@@ -10,15 +10,15 @@ import javax.swing.JPanel;
 public class gamePanel extends JPanel implements Runnable{
     
     //SCREEN SETTINGS
-    final static int originalTileSize = 8; //16x16 tile
-    final static int scale = 3;
+    final static int originalTileSize = 4; //16x16 tile
+    final static int scale = 4;
 
     final static int tileSize = originalTileSize * scale; //48x48 tile
     final static int maxScreenCol = 60;// 1440 x pixels
     final static int maxScreenRow = 60;// 1440 y pixels
     final static int screenWidth = tileSize * maxScreenCol;
     final static int screenHeight = tileSize * maxScreenRow;
-    final static vector gravity = new vector(.1f, 0f);
+    final static vector gravity = new vector(0f, -0.5f);
     final static float density = 1f;
     final static float o = 1.9f; // should be between 1 and 2, higher values mean more diffusion and is the overrelaxation factor
     
@@ -52,19 +52,25 @@ public class gamePanel extends JPanel implements Runnable{
     @Override
     public void run(){
 
-        for(int i = 0; i < maxScreenCol; i++){
-            for(int j  = 0; j < maxScreenRow; j++){
-                if(i < maxScreenCol && i > 0 && j < maxScreenRow - 1 && j > 0){
-                    arrayU[j][i] = 1f;
-                    arrayV[j][i] = 1f;
-                    arrayS[j][i] = 1f;
-                    arrayP[j][i] = 0;
+        for(int i = 0; i < maxScreenRow; i++){
+            for(int j  = 0; j < maxScreenCol; j++){
+                if(i < maxScreenRow - 5 && j < maxScreenCol - 1 && j > 0){
+                    arrayU[i][j] = 1f;//u vector pos of each particle (x dir)
+                    arrayV[i][j] = 1f;//v vector pos of each particle (y dir)
+                    arrayS[i][j] = 1f;//density
+                    arrayP[i][j] = 0;//pressure
+                }
+                else if(i >= maxScreenRow - 5){
+                    arrayU[i][j] = 0f;
+                    arrayV[i][j] = 0f;
+                    arrayS[i][j] = 0.3f;
+                    arrayP[i][j] = 0;
                 }
                 else{
-                    arrayU[j][i] = 0f;
-                    arrayV[j][i] = 0f;
-                    arrayS[j][i] = 0f;
-                    arrayP[j][i] = 0;
+                    arrayU[i][j] = 0f;
+                    arrayV[i][j] = 0f;
+                    arrayS[i][j] = 0f;
+                    arrayP[i][j] = 0;
                 }
             }
         }
@@ -139,11 +145,38 @@ public class gamePanel extends JPanel implements Runnable{
         // }
     //}
 
-
-
-    public void update(double drawInt){
+    public void updateGravity(double drawInt){
         for(int i = 1; i < maxScreenRow - 1; i++){
             for(int j  = 1; j < maxScreenCol - 1; j++){
+
+                vector grav = new vector(gravity.x * (float)drawInt ,gravity.y * (float)drawInt); //velocity at center of cell, no interpolation for now
+
+                float newX = j + grav.x;
+                float newY = i + grav.y;
+
+                newX = Math.max(0, Math.min(maxScreenCol - 1, newX));
+                newY = Math.max(0, Math.min(maxScreenRow - 1, newY));
+
+                arrayU[i][j] = newX;
+                arrayV[i][j] = newY;
+
+                newArrayU[i][j] = arrayU[i][j];
+                newArrayV[i][j] = arrayV[i][j];
+            }
+        }
+
+        for(int i = 1; i < maxScreenRow - 1; i++){
+            for(int j  = 1; j < maxScreenCol - 1; j++){
+                arrayU[i][j] = newArrayU[i][j];
+                arrayV[i][j] = newArrayV[i][j];
+            }
+        }
+    }
+
+    public void updateDiffusion(double drawInt){
+        for(int i = 1; i < maxScreenRow - 1; i++){
+            for(int j  = 1; j < maxScreenCol - 1; j++){
+
                 // object obj = Objects.get(i * j);
                 // if(obj.boundary){
                 //     continue;
@@ -165,10 +198,57 @@ public class gamePanel extends JPanel implements Runnable{
 
                 float s = arrayS[i + 1][j] + arrayS[i - 1][j] + arrayS[i][j + 1] + arrayS[i][j - 1];
 
+
+                if(arrayU[i][j] == 0f){
+                    newArrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
+                    newArrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
+                    newArrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
+
+                }
+                else if(arrayU[i + 1][j] == 0f){
+                    newArrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
+                    newArrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
+                    newArrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
+                }
+                else if(arrayV[i][j] == 0f){
+                    newArrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
+                    newArrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
+                    newArrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
+                }
+                else if(arrayV[i][j + 1] == 0f){
+                    newArrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
+                    newArrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
+                    newArrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
+                }
+                else{
+                    newArrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
+                    newArrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
+                    newArrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
+                    newArrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
+                }
+
                 arrayP[i][j] = (float)(arrayP[i][j] + (divergence.magnitude()/s) * (density * tileSize / drawInt));
 
-                float x = (float)(i * tileSize * Math.random());
-                float y = (float)(j * tileSize * Math.random());
+
+            }
+        }
+
+        for(int i = 1; i < maxScreenRow - 1; i++){
+            for(int j  = 1; j < maxScreenCol - 1; j++){
+                arrayU[i][j] = newArrayU[i][j];
+                arrayV[i][j] = newArrayV[i][j];
+            }
+        }
+    }
+
+    public void updateAdvection(double drawInt){
+        for(int i = 1; i < maxScreenRow - 1; i++){
+            for(int j  = 1; j < maxScreenCol - 1; j++){
+
+                //INTERPOLATING THE VELOCITY AT THE CENTER OF THE CELL
+
+                float x = (float)(j) + 0.5f;
+                float y = (float)(i) + 0.5f;
 
                 float w00 = 1 - x/tileSize;
                 float w01 = x/tileSize;
@@ -177,72 +257,79 @@ public class gamePanel extends JPanel implements Runnable{
 
                 float vbar = (w00 * w10 * arrayV[i][j]) + (w01 * w10 * arrayV[i + 1][j]) + (w00 * w11 * arrayV[i][j + 1]) + (w01 * w11 * arrayV[i + 1][j + 1]);
 
-                vector vel = new vector(arrayU[i][j], vbar);
+                vector vel = new vector(arrayU[i][j], vbar); //velocity at center of cell, no interpolation for now
 
-                if(arrayU[i][j] == 0f){
-                    arrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
-                    arrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
-                    arrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
+                System.out.println("velX: " + vel.x + ", velY: " + vel.y);
 
-                }
-                else if(arrayU[i + 1][j] == 0f){
-                    arrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
-                    arrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
-                    arrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
-                }
-                else if(arrayV[i][j] == 0f){
-                    arrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
-                    arrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
-                    arrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
-                }
-                else if(arrayV[i][j + 1] == 0f){
-                    arrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
-                    arrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
-                    arrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
-                }
-                else{
-                    arrayU[i][j] = arrayU[i][j] + divergence.x * arrayS[i-1][j]/s;
-                    arrayU[i + 1][j] = arrayU[i + 1][j] - divergence.x * arrayS[i+1][j]/s;
-                    arrayV[i][j] = arrayV[i][j] + divergence.y * arrayS[i][j - 1]/s;
-                    arrayV[i][j + 1] = arrayV[i][j + 1] - divergence.y * arrayS[i][j+1]/s;
-                }
+                float newX = x - vel.x;
+                float newY = y - vel.y;
 
-                // float newX = x / tileSize + vel.x * (float)drawInt / tileSize;
-                // float newY = y / tileSize + vel.y * (float)drawInt / tileSize;
+                newX = Math.max(0, Math.min(maxScreenCol - 1, newX));
+                newY = Math.max(0, Math.min(maxScreenRow - 1, newY));
 
-                // int targetI = Math.max(0, Math.min(maxScreenRow - 1, (int)(i + newX)));
-                // int targetJ = Math.max(0, Math.min(maxScreenCol - 1, (int)(j + newY)));
+                System.out.println("sourceX: " + newX + ", sourceY: " + newY);
 
-                // arrayU[targetI][targetJ] = arrayU[i][j];
-                // arrayV[targetI][targetJ] = arrayV[i][j];
+                //INTERPOLATING THE BACKTRACED POSITION TO FIND THE NEW VELOCITY!
 
-                //FIX ADVECTION BETWEEN CELLS
+                // Extract integer part for grid indices
+                int i0 = (int)Math.floor(newY);
+                int i1 = i0 + 1;
+                float fracX = newY - i0; //fractional offset
 
-                
-                //PRESSURE NOT NEEDED BUT COULD BE USED FOR VISUALIZATION OR IMPROVEMENTS LATER
+                int j0 = (int)Math.floor(newX);
+                int j1 = j0 + 1;
+                float fracY = newX - j0;
 
-                // vector divergence = rightVect.velocity.subVector(leftVect.velocity).addVector(upVect.velocity.subVector(downVect.velocity));
-        
-                // if(leftVect.boundary == true || downVect.boundary == true){
-                //     this.velocity = this.velocity.subVector(divergence.divide(3f));
-                // }
-                // else if(rightVect.boundary == true || upVect.boundary == true){
-                //     this.velocity = this.velocity.addVector(divergence.divide(3f));
-                // }
-                // else{
-                //     this.velocity = this.velocity.addVector(divergence.divide(4f));
-                // }
+                // Clamp indices to be within bounds
+                i0 = Math.max(0, Math.min(maxScreenRow - 1, i0));
+                i1 = Math.max(0, Math.min(maxScreenRow - 1, i1));
+                j0 = Math.max(0, Math.min(maxScreenCol - 1, j0));
+                j1 = Math.max(0, Math.min(maxScreenCol - 1, j1));
 
+                //Compute Weights
+                float neww00 = (1 - fracX) * (1 - fracY);
+                float neww10 = fracX * (1 - fracY);
+                float neww01 = (1 - fracX) * fracY;
+                float neww11 = fracX * fracY;
+
+                // Interpolate the **value** (stays as float)
+                float interpolatedU = neww00 * arrayU[i0][j0] + neww10 * arrayU[i1][j0] + 
+                                    neww01 * arrayU[i0][j1] + neww11 * arrayU[i1][j1];
+
+                float interpolatedV = neww00 * arrayV[i0][j0] + neww10 * arrayV[i1][j0] + 
+                                    neww01 * arrayV[i0][j1] + neww11 * arrayV[i1][j1];
+
+                //int targetI = (int)Math.max(0, Math.min(maxScreenRow - 1, (newX)));
+                //int targetJ = (int)Math.max(0, Math.min(maxScreenCol - 1, (newY)));
+
+                newArrayU[i][j] = interpolatedU;
+                newArrayV[i][j] = interpolatedV;
             }
         }
 
         for(int i = 1; i < maxScreenRow - 1; i++){
             for(int j  = 1; j < maxScreenCol - 1; j++){
-                newArrayU[i][j] = arrayU[i][j];
-                newArrayV[i][j] = arrayV[i][j];
-                System.out.println(newArrayU[i][j] + ", " + newArrayV[i][j]);
+                arrayU[i][j] = newArrayU[i][j];
+                arrayV[i][j] = newArrayV[i][j];
             }
         }
+    }
+
+    public void update(double drawInt){
+        updateGravity(drawInt);
+        for(int i = 0; i < 10; i++){
+            updateDiffusion(drawInt);
+        }
+        updateAdvection(drawInt);
+
+        //FIX ADVECTION BETWEEN CELLS
+        //PRESSURE NOT NEEDED BUT COULD BE USED FOR VISUALIZATION OR IMPROVEMENTS LATER
+
+        // for(int i = 1; i < maxScreenRow - 1; i++){
+        //     for(int j  = 1; j < maxScreenCol - 1; j++){
+        //         System.out.println(newArrayU[i][j] + ", " + newArrayV[i][j]);
+        //     }
+        // }
 
     }
     
@@ -256,12 +343,12 @@ public class gamePanel extends JPanel implements Runnable{
         // for(int i = 0; i < maxScreenRow; i++){
         //     for(int j  = 0; j < maxScreenCol; j++){
         //         graphics.drawRect(i * tileSize, j * tileSize, tileSize, tileSize);
-        //     }
+        //     }    
         // }
 
         for(int i = 1; i < maxScreenRow - 1; i++){
             for(int j  = 1; j < maxScreenCol - 1; j++){
-            float colorValue = Math.max(0.0f, Math.min(1.0f, (arrayP[i][j])/3f));
+            float colorValue = Math.max(0.0f, Math.min(1.0f, (newArrayU[i][j] + newArrayV[i][j])/3f));
             int rgb = (int)(colorValue * 255);
             graphics.setColor(new Color(rgb, 1, 1));
 
