@@ -198,14 +198,6 @@ public class gamePanel extends JPanel implements Runnable{
     }
 
     public void solvePressure(double drawInt){
-        float safeDt = (float)Math.max(drawInt, 1e-6);
-
-        for(int i = 1; i < maxScreenRow - 1; i++){
-            for(int j  = 1; j < maxScreenCol - 1; j++){
-                arrayU[i][j] = newArrayU[i][j];
-                arrayV[i][j] = newArrayV[i][j];
-            }
-        }
 
         for(int i = 1; i < maxScreenRow - 1; i++){
             for(int j  = 1; j < maxScreenCol - 1; j++){
@@ -229,24 +221,21 @@ public class gamePanel extends JPanel implements Runnable{
                     continue;
                 }
 
-                float leftPressure = leftSolid ? 0f : arrayR[i][j - 1];
-                float rightPressure = rightSolid ? 0f : arrayR[i][j + 1];
-                float upPressure = upSolid ? 0f : arrayR[i - 1][j];
-                float downPressure = downSolid ? 0f : arrayR[i + 1][j];
+                float leftPressure = leftSolid ? arrayR[i][j - 1] * -1 : arrayR[i][j - 1];
+                float rightPressure = rightSolid ? arrayR[i][j + 1] * -1 : arrayR[i][j + 1];
+                float upPressure = upSolid ? arrayR[i - 1][j] * -1 : arrayR[i - 1][j];
+                float downPressure = downSolid ? arrayR[i + 1][j] * -1 : arrayR[i + 1][j];
 
-                float leftVel = leftSolid ? 0f : arrayU[i][j - 1];
-                float rightVel = rightSolid ? 0f : arrayU[i][j + 1];
-                float upVel = upSolid ? 0f : arrayV[i - 1][j];
-                float downVel = downSolid ? 0f : arrayV[i + 1][j];
+                float leftVel = leftSolid ? arrayU[i][j - 1] * -1 : arrayU[i][j - 1];
+                float rightVel = rightSolid ? arrayU[i][j + 1] * -1 : arrayU[i][j + 1];
+                float upVel = upSolid ? arrayV[i - 1][j] * -1 : arrayV[i - 1][j];
+                float downVel = downSolid ? arrayV[i + 1][j] * -1 : arrayV[i + 1][j];
 
                 // U[i][j+1] is the right face, U[i][j] is the left face — both are true face velocities
-                float divergence = (arrayU[i][j + 1] - arrayU[i][j]) +
-                                (arrayV[i + 1][j] - arrayV[i][j]);
-
+                float divergence = (rightVel - arrayU[i][j]) +
+                                (downVel - arrayV[i][j]);
 
                 newArrayR[i][j] = ((leftPressure + rightPressure + upPressure + downPressure - divergence) / openNeighbors);
-
-
             }
         }
 
@@ -275,7 +264,6 @@ public class gamePanel extends JPanel implements Runnable{
                 float rightPressure = rightSolid ? arrayR[i][j] : arrayR[i][j + 1];
                 float upPressure = upSolid ? arrayR[i][j] : arrayR[i - 1][j];
                 float downPressure = downSolid ? arrayR[i][j] : arrayR[i + 1][j];
-
 
                 // Correct: project onto faces
                 newArrayU[i][j]     = arrayU[i][j]     - (arrayR[i][j] - leftPressure);
@@ -464,7 +452,7 @@ public class gamePanel extends JPanel implements Runnable{
         int endRow = maxScreenRow - 4;
 
         for(int i = startRow; i < endRow; i++){
-            for(int j = centerCol - 2; j < centerCol + 2; j++){
+            for(int j = centerCol - 10; j < centerCol + 10; j++){
                 if(arrayP[i][j] == 0){
                     arrayS[i][j] = 1f;
                     //arrayV[i][j] = -1f; //upward velocity
@@ -513,6 +501,9 @@ public class gamePanel extends JPanel implements Runnable{
 
         super.paintComponent(g);
 
+        int step = 3; // only draw every 3rd cell or the screen gets too cluttered
+        float scale = 50f; // scale up the arrows so they're visible
+
         Graphics2D graphics = (Graphics2D)g;
 
         // for(int i = 0; i < maxScreenRow; i++){
@@ -530,6 +521,23 @@ public class gamePanel extends JPanel implements Runnable{
                 graphics.fillRect(j * tileSize, i * tileSize, tileSize, tileSize);
                 //graphics.drawLine((int)(obj.position.x), (int)(obj.position.y + 0.5 * tileSize), (int)(obj.position.x + obj.velocity.x), (int)(obj.position.y + 0.5 * tileSize));
                 //graphics.drawLine((int)(obj.position.x + 0.5 * tileSize), (int)(obj.position.y), (int)(obj.position.x  + 0.5 * tileSize), (int)(obj.position.y + obj.velocity.y));
+            }
+        }
+
+        graphics.setColor(Color.RED);
+
+        for(int i = 1; i < maxScreenRow - 1; i += step){
+            for(int j = 1; j < maxScreenCol - 1; j += step){
+                
+                // center of cell in screen pixels
+                int cx = j * tileSize + tileSize / 2;
+                int cy = i * tileSize + tileSize / 2;
+                
+                // endpoint of arrow
+                int ex = (int)(cx + arrayU[i][j] * tileSize * scale);
+                int ey = (int)(cy + arrayV[i][j] * tileSize * scale);
+                
+                graphics.drawLine(cx, cy, ex, ey);
             }
         }
         // for(object obj: Objects){
