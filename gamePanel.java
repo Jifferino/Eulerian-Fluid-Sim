@@ -4,6 +4,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.util.ArrayList;
 import javax.swing.JPanel;
+import java.util.Random;
 
 public class gamePanel extends JPanel implements Runnable{
     
@@ -29,6 +30,9 @@ public class gamePanel extends JPanel implements Runnable{
     public static float[][] newArrayV = new float[maxScreenRow][maxScreenCol];
     public static float[][] newArrayS = new float[maxScreenRow][maxScreenCol];
     public static float[][] newArrayR = new float[maxScreenRow][maxScreenCol];
+
+    Random random = new Random();
+
     //FPS
     int FPS = 60;
 
@@ -153,6 +157,9 @@ public class gamePanel extends JPanel implements Runnable{
                     continue;
                 }
 
+                //gravity.x = random.nextFloat(100) - 50f; // random horizontal gravity 
+                //gravity.y = random.nextFloat() * 10f - 5f; // random vertical gravity between -5 and 5
+
                 vector grav = new vector(gravity.x * (float)drawInt ,gravity.y * (float)drawInt); //velocity at center of cell, no interpolation for now
 
                 arrayU[i][j] += grav.x;
@@ -195,8 +202,8 @@ public class gamePanel extends JPanel implements Runnable{
 
         for(int i = 1; i < maxScreenRow - 1; i++){
             for(int j  = 1; j < maxScreenCol - 1; j++){
-                newArrayU[i][j] = arrayU[i][j];
-                newArrayV[i][j] = arrayV[i][j];
+                arrayU[i][j] = newArrayU[i][j];
+                arrayV[i][j] = newArrayV[i][j];
             }
         }
 
@@ -227,11 +234,17 @@ public class gamePanel extends JPanel implements Runnable{
                 float upPressure = upSolid ? 0f : arrayR[i - 1][j];
                 float downPressure = downSolid ? 0f : arrayR[i + 1][j];
 
-                float divergence =
-                    0.5f * (arrayU[i][j + 1] - arrayU[i][j - 1]) +
-                    0.5f * (arrayV[i + 1][j] - arrayV[i - 1][j]);
+                float leftVel = leftSolid ? 0f : arrayU[i][j - 1];
+                float rightVel = rightSolid ? 0f : arrayU[i][j + 1];
+                float upVel = upSolid ? 0f : arrayV[i - 1][j];
+                float downVel = downSolid ? 0f : arrayV[i + 1][j];
 
-                newArrayR[i][j] = (leftPressure + rightPressure + upPressure + downPressure - divergence) / openNeighbors;
+                // U[i][j+1] is the right face, U[i][j] is the left face — both are true face velocities
+                float divergence = (arrayU[i][j + 1] - arrayU[i][j]) +
+                                (arrayV[i + 1][j] - arrayV[i][j]);
+
+
+                newArrayR[i][j] = ((leftPressure + rightPressure + upPressure + downPressure - divergence) / openNeighbors);
 
 
             }
@@ -264,9 +277,11 @@ public class gamePanel extends JPanel implements Runnable{
                 float downPressure = downSolid ? arrayR[i][j] : arrayR[i + 1][j];
 
 
-                newArrayU[i][j] = arrayU[i][j] - 0.5f * (rightPressure - leftPressure) * (safeDt / density);
-                newArrayV[i][j] = arrayV[i][j] - 0.5f * (upPressure - downPressure) * (safeDt / density);
-                
+                // Correct: project onto faces
+                newArrayU[i][j]     = arrayU[i][j]     - (arrayR[i][j] - leftPressure);
+                newArrayU[i][j + 1] = arrayU[i][j + 1] - (rightPressure - arrayR[i][j]);
+                newArrayV[i][j]     = arrayV[i][j]     - (arrayR[i][j] - upPressure);
+                newArrayV[i + 1][j] = arrayV[i + 1][j] - (downPressure - arrayR[i][j]);
 
             }
         }
@@ -289,44 +304,79 @@ public class gamePanel extends JPanel implements Runnable{
 
                 //INTERPOLATING THE VELOCITY AT THE CENTER OF THE CELL
 
-                float x = (float)(j) + 0.5f;
-                float y = (float)(i) + 0.5f;
+                // For U component — backtrace from left face of cell
+                float Ux = (float) j;        // face is at left edge, not center
+                float Uy = (float) i + 0.5f;
 
-                float newX = x - (float)drawInt * arrayU[i][j];
-                float newY = y - (float)drawInt * arrayV[i][j];
+                // For V component — backtrace from top face of cell  
+                float Vx = (float) j + 0.5f;
+                float Vy = (float) i;        // face is at top edge, not center
 
-                newX = (float)Math.max(0, (float)Math.min(maxScreenCol - 1, newX));
-                newY = (float)Math.max(0, (float)Math.min(maxScreenRow - 1, newY));
+                float newUX = Ux - (float)drawInt * arrayU[i][j];
+                float newUY = Uy - (float)drawInt * arrayV[i][j];
+
+                newUX = (float)Math.max(1, (float)Math.min(maxScreenCol - 2, newUX));
+                newUY = (float)Math.max(1, (float)Math.min(maxScreenRow - 2, newUY));
 
                 //INTERPOLATING THE BACKTRACED POSITION TO FIND THE NEW VELOCITY!
 
                 // Extract integer part for grid indices
-                int i0 = (int)Math.floor(newY);
-                int i1 = i0 + 1;
-                float fracX = newY - i0; //fractional offset
+                int Ui0 = (int)Math.floor(newUY);
+                int Ui1 = Ui0 + 1;
+                float fracUY = newUY - Ui0; //fractional offset
 
-                int j0 = (int)Math.floor(newX);
-                int j1 = j0 + 1;
-                float fracY = newX - j0;
+                int Uj0 = (int)Math.floor(newUX);
+                int Uj1 = Uj0 + 1;
+                float fracUX = newUX - Uj0;
 
                 // Clamp indices to be within bounds
-                i0 = Math.max(0, Math.min(maxScreenRow - 1, i0));
-                i1 = Math.max(0, Math.min(maxScreenRow - 1, i1));
-                j0 = Math.max(0, Math.min(maxScreenCol - 1, j0));
-                j1 = Math.max(0, Math.min(maxScreenCol - 1, j1));
+                Ui0 = Math.max(1, Math.min(maxScreenRow - 2, Ui0));
+                Ui1 = Math.max(1, Math.min(maxScreenRow - 2, Ui1));
+                Uj0 = Math.max(1, Math.min(maxScreenCol - 2, Uj0));
+                Uj1 = Math.max(1, Math.min(maxScreenCol - 2, Uj1));
 
                 //Compute Weights
-                float neww00 = (1 - fracX) * (1 - fracY);
-                float neww10 = fracX * (1 - fracY);
-                float neww01 = (1 - fracX) * fracY;
-                float neww11 = fracX * fracY;
+                float newwU00 = (1 - fracUY) * (1 - fracUX);
+                float newwU10 = fracUY * (1 - fracUX);
+                float newwU01 = (1 - fracUY) * fracUX;
+                float newwU11 = fracUY * fracUX;
 
                 // Interpolate the **value** (stays as float)
-                float interpolatedU = neww00 * arrayU[i0][j0] + neww10 * arrayU[i1][j0] + 
-                                    neww01 * arrayU[i0][j1] + neww11 * arrayU[i1][j1];
+                float interpolatedU = newwU00 * arrayU[Ui0][Uj0] + newwU10 * arrayU[Ui1][Uj0] + 
+                                    newwU01 * arrayU[Ui0][Uj1] + newwU11 * arrayU[Ui1][Uj1];
 
-                float interpolatedV = neww00 * arrayV[i0][j0] + neww10 * arrayV[i1][j0] + 
-                                    neww01 * arrayV[i0][j1] + neww11 * arrayV[i1][j1];
+                float newVX = Vx - (float)drawInt * arrayU[i][j];
+                float newVY = Vy - (float)drawInt * arrayV[i][j];
+
+                newVX = (float)Math.max(1, (float)Math.min(maxScreenCol - 2, newVX));
+                newVY = (float)Math.max(1, (float)Math.min(maxScreenRow - 2, newVY));
+
+                //INTERPOLATING THE BACKTRACED POSITION TO FIND THE NEW VELOCITY!
+
+                // Extract integer part for grid indices
+                int Vi0 = (int)Math.floor(newVY);
+                int Vi1 = Vi0 + 1;
+                float fracVY = newVY - Vi0; //fractional offset
+
+                int Vj0 = (int)Math.floor(newVX);
+                int Vj1 = Vj0 + 1;
+                float fracVX = newVX - Vj0;
+
+                // Clamp indices to be within bounds
+                Vi0 = Math.max(1, Math.min(maxScreenRow - 2, Vi0));
+                Vi1 = Math.max(1, Math.min(maxScreenRow - 2, Vi1));
+                Vj0 = Math.max(1, Math.min(maxScreenCol - 2, Vj0));
+                Vj1 = Math.max(1, Math.min(maxScreenCol - 2, Vj1));
+
+                //Compute Weights
+                float newwV00 = (1 - fracVY) * (1 - fracVX);
+                float newwV10 = fracVY * (1 - fracVX);
+                float newwV01 = (1 - fracVY) * fracVX;
+                float newwV11 = fracVY * fracVX;
+
+
+                float interpolatedV = newwV00 * arrayV[Vi0][Vj0] + newwV10 * arrayV[Vi1][Vj0] + 
+                                    newwV01 * arrayV[Vi0][Vj1] + newwV11 * arrayV[Vi1][Vj1];
 
                 //int targetI = (int)Math.max(0, Math.min(maxScreenRow - 1, (newX)));
                 //int targetJ = (int)Math.max(0, Math.min(maxScreenCol - 1, (newY)));
@@ -355,38 +405,38 @@ public class gamePanel extends JPanel implements Runnable{
                 }
 
                 //INTERPOLATING THE VELOCITY AT THE CENTER OF THE CELL
-
+ 
                 float x = (float)(j) + 0.5f;
                 float y = (float)(i) + 0.5f;
 
                 float newX = x - (float)drawInt * arrayU[i][j];
                 float newY = y - (float)drawInt * arrayV[i][j];
 
-                newX = (float)Math.max(0, (float)Math.min(maxScreenCol - 1, newX));
-                newY = (float)Math.max(0, (float)Math.min(maxScreenRow - 1, newY));
+                newX = (float)Math.max(1, (float)Math.min(maxScreenCol - 2, newX));
+                newY = (float)Math.max(1, (float)Math.min(maxScreenRow - 2, newY));
 
                 //INTERPOLATING THE BACKTRACED POSITION TO FIND THE NEW VELOCITY!
 
                 // Extract integer part for grid indices
                 int i0 = (int)Math.floor(newY);
                 int i1 = i0 + 1;
-                float fracX = newY - i0; //fractional offset
+                float fracY = newY - i0; //fractional offset
 
                 int j0 = (int)Math.floor(newX);
                 int j1 = j0 + 1;
-                float fracY = newX - j0;
+                float fracX = newX - j0;
 
                 // Clamp indices to be within bounds
-                i0 = Math.max(0, Math.min(maxScreenRow - 1, i0));
-                i1 = Math.max(0, Math.min(maxScreenRow - 1, i1));
-                j0 = Math.max(0, Math.min(maxScreenCol - 1, j0));
-                j1 = Math.max(0, Math.min(maxScreenCol - 1, j1));
+                i0 = Math.max(1, Math.min(maxScreenRow - 2, i0));
+                i1 = Math.max(1, Math.min(maxScreenRow - 2, i1));
+                j0 = Math.max(1, Math.min(maxScreenCol - 2, j0));
+                j1 = Math.max(1, Math.min(maxScreenCol - 2, j1));
 
                 //Compute Weights
-                float neww00 = (1 - fracX) * (1 - fracY);
-                float neww10 = fracX * (1 - fracY);
-                float neww01 = (1 - fracX) * fracY;
-                float neww11 = fracX * fracY;
+                float neww00 = (1 - fracY) * (1 - fracX);
+                float neww10 = fracY * (1 - fracX);
+                float neww01 = (1 - fracY) * fracX;
+                float neww11 = fracY * fracX;
 
                 // Interpolate the **value** (stays as float)
 
@@ -414,10 +464,10 @@ public class gamePanel extends JPanel implements Runnable{
         int endRow = maxScreenRow - 4;
 
         for(int i = startRow; i < endRow; i++){
-            for(int j = centerCol - 2; j <= centerCol + 2; j++){
+            for(int j = centerCol - 2; j < centerCol + 2; j++){
                 if(arrayP[i][j] == 0){
                     arrayS[i][j] = 1f;
-                    arrayV[i][j] = -1f; //upward velocity
+                    //arrayV[i][j] = -1f; //upward velocity
                     arrayU[i][j] = 0f; //no horizontal velocity
                 }
 
@@ -438,7 +488,7 @@ public class gamePanel extends JPanel implements Runnable{
         advectVelocity(drawInt);
         addBuoyancy(drawInt);
         clearPressure();
-        for(int i = 0; i < 20; i++){
+        for(int i = 0; i < 10; i++){
             solvePressure(drawInt);
         }
         updatePressure(drawInt);
@@ -475,7 +525,7 @@ public class gamePanel extends JPanel implements Runnable{
             for(int j  = 1; j < maxScreenCol - 1; j++){
             float colorValue = Math.clamp(arrayS[i][j], 0, 1);
             int rgb = (int)(colorValue * 255);
-            graphics.setColor(new Color(rgb, 1, 1));
+            graphics.setColor(new Color(rgb, rgb, rgb));
 
                 graphics.fillRect(j * tileSize, i * tileSize, tileSize, tileSize);
                 //graphics.drawLine((int)(obj.position.x), (int)(obj.position.y + 0.5 * tileSize), (int)(obj.position.x + obj.velocity.x), (int)(obj.position.y + 0.5 * tileSize));
